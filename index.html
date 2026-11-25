@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tablero de condición W5250S</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* VOICE: sala de control de mantenimiento; clínico, preciso, sin adornos.
+   IDEA: el panel de un tablero eléctrico industrial con su semáforo de estado y fichas de órdenes de trabajo.
+   PICTURE: medidor semicircular del índice de salud + semáforo de 4 luces; curvas de tendencia con bandas de zona.
+   COLOUR and TYPE: blanco, negro, planos de concreto; color solo en el semáforo (verde, amarillo, naranja, rojo). Hanken Grotesk.
+   LAYOUT: controles del simulador arriba, pestañas, una composición por pestaña; se apila bajo 600px. */
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,#161615);--ink:light-dark(#141413,#ececea);--con:light-dark(#ecece8,#222220);--con2:light-dark(#d8d8d4,#2e2e2b);
+--line:light-dark(#cfcfca,#3a3a37);--mut:light-dark(#5c5c57,#a9a9a3);
+--g:#1e9b54;--y:#e3b000;--o:#ec7a00;--r:#d42c1f;--gs:light-dark(#e3f4ea,#173222);--ys:light-dark(#fbf2cf,#3a3215);--os:light-dark(#fde6cf,#3d2810);--rs:light-dark(#f9dcd9,#3e1a16)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Hanken Grotesk",system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(20px,3vw,40px) max(4vw,16px)}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:clamp(26px,3.6vw,40px);line-height:1.08;margin:0 0 6px;font-weight:600;text-wrap:balance}
+h2{font-size:24px;line-height:1.15;margin:0 0 12px;font-weight:600}
+h3{font-size:17px;margin:0 0 6px;font-weight:600}
+p{margin:0 0 10px;max-width:72ch}
+.sub{color:var(--mut);font-size:15px}
+.top{background:var(--con);border-bottom:1px solid var(--line);padding-bottom:16px}
+.ctrl{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end;margin-top:14px}
+.ctrl label{display:flex;flex-direction:column;font-size:13px;color:var(--mut);gap:3px}
+select,input,button,textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;min-height:44px;padding:8px 10px}
+textarea{width:100%;min-height:140px;font-family:ui-monospace,Menlo,monospace;font-size:14px}
+button{cursor:pointer;font-weight:600;background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button.ghost{background:var(--bg);color:var(--ink);border-color:var(--line)}
+:focus-visible{outline:3px solid var(--o);outline-offset:2px}
+.day{flex:1 1 260px}.day input{width:100%;padding:0;min-height:44px;border:0;background:none;accent-color:var(--ink)}
+.dayv{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+nav{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line);padding:0 max(4vw,16px);position:sticky;top:0;background:var(--bg);z-index:5}
+nav a{flex:none;padding:13px 14px;color:var(--mut);text-decoration:none;font-weight:600;border-bottom:3px solid transparent}
+nav a.on{color:var(--ink);border-color:var(--ink)}
+section.tab{display:none}section.tab.on{display:block}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.g3{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.hero{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);align-items:stretch}
+.panel{background:var(--con);border-radius:10px;padding:18px}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--bg);cursor:pointer;display:flex;flex-direction:column;gap:4px}
+.card:hover{border-color:var(--ink)}
+.big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;white-space:nowrap}
+.unit{font-size:15px;font-weight:500;color:var(--mut)}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap;line-height:1.6}
+.l0{background:var(--gs);color:light-dark(#0e5c31,#7fdaa5)}.l1{background:var(--ys);color:light-dark(#6b5200,#f0d36a)}.l2{background:var(--os);color:light-dark(#7a3c00,#ffb36b)}.l3{background:var(--rs);color:light-dark(#8e1b11,#ff8f84)}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.o{font-size:12px;font-weight:600;padding:1px 7px;border-radius:4px;border:1px solid var(--line);color:var(--mut);white-space:nowrap}
+.oM{border-color:var(--g);color:var(--g)}.oI{border-color:#3b6fd6;color:light-dark(#2a56b0,#8fb0ff)}.oS{border-color:var(--o);color:light-dark(#9a4d00,#ffb36b)}
+.row{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.small{font-size:13px;color:var(--mut)}
+.light{display:flex;flex-direction:column;gap:10px;align-items:center;background:#1b1b1a;border-radius:14px;padding:14px 12px;width:74px;flex:none}
+.light i{width:44px;height:44px;border-radius:50%;opacity:.18;display:block}
+.light i.on{opacity:1;box-shadow:0 0 18px currentColor}
+.gauge{display:flex;gap:18px;align-items:center}
+.gsvg{flex:1;max-width:420px}
+.fig{position:relative;min-height:340px}.fig>canvas{position:absolute;inset:0;width:100%!important;height:100%!important}
+.fig.s{min-height:220px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:13px;color:var(--mut);font-weight:600}
+td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+.vbtn{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.vbtn button{min-height:40px;padding:6px 12px;font-size:14px}
+.vbtn button:not(.on){background:var(--bg);color:var(--ink);border-color:var(--line)}
+.ot{border:1px solid var(--line);border-left:6px solid var(--o);border-radius:8px;padding:14px 16px;background:var(--bg)}
+.ot.p1{border-left-color:var(--r)}.ot.p4{border-left-color:var(--y)}.ot.p3{border-left-color:#c79a00}
+.ot dl{display:grid;grid-template-columns:9em minmax(0,1fr);gap:4px 12px;margin:8px 0;font-size:14px}
+.ot dt{color:var(--mut)}.ot dd{margin:0}
+.kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;font-size:15px}
+.kv span:nth-child(even){text-align:right;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.verd{padding:12px 14px;border-radius:8px;margin-top:12px;font-weight:600}
+details{border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-top:12px}
+summary{cursor:pointer;font-weight:600}
+.empty{padding:24px;text-align:center;color:var(--mut);border:1px dashed var(--line);border-radius:10px}
+.form{display:flex;flex-wrap:wrap;gap:10px;align-items:end}.form label{display:flex;flex-direction:column;font-size:13px;color:var(--mut);gap:3px}
+.msg{font-size:14px;margin-top:8px}
+ul{margin:0;padding-left:20px}li{margin-bottom:6px}
+@media(max-width:860px){.hero,.g2{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal;color:var(--mut)}.stack td:empty{display:none}.ot dl{grid-template-columns:minmax(0,1fr)}.light{width:60px}.light i{width:34px;height:34px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script>
+</head>
+<body>
+<header class="band top"><div class="wrap">
+  <div class="small">Lavadora industrial Electrolux W5250S · Motor de accionamiento del tambor · Lavallena, Chorrillos</div>
+  <h1 id="finding">Tablero de condición</h1>
+  <div class="sub" id="findsub"></div>
+  <div class="ctrl">
+    <label>Fuente de datos<select id="src"><option value="sim">Simulador (supuesto)</option><option value="own">Datos cargados / medidos</option></select></label>
+    <label>Escenario de degradación<select id="scen"></select></label>
+    <label>Muestreo<select id="samp"><option value="plan">Según plan (≤ ½ P-F)</option><option value="daily">Diario (sensor)</option></select></label>
+    <label class="day">Día de operación: <span class="dayv" id="dayv">0</span><input type="range" id="day" min="0" max="330" value="0"></label>
+    <button id="play">▶ Reproducir</button>
+    <button class="ghost" id="seed">Nuevo ruido</button>
+  </div>
+  <div class="small" style="margin-top:8px">Etiquetas de origen: <span class="o oM">Medido</span> <span class="o oI">Inferido</span> <span class="o oS">Supuesto</span> · Datos del simulador = Supuesto (simulado), nunca medidos.</div>
+</div></header>
+<nav id="tabs"><a href="#estado">Estado</a><a href="#tendencias">Tendencias</a><a href="#alertas">Alertas y acciones</a><a href="#indicadores">Indicadores de proceso</a><a href="#datos">Datos y supuestos</a></nav>
+
+<main>
+<section class="tab band" id="t-estado"><div class="wrap">
+  <div class="grid hero">
+    <div class="panel">
+      <h2>Índice de salud del motor</h2>
+      <div class="gauge"><div class="gsvg" id="gauge"></div>
+        <div class="light" aria-label="Semáforo del equipo"><i style="color:var(--r);background:var(--r)"></i><i style="color:var(--o);background:var(--o)"></i><i style="color:var(--y);background:var(--y)"></i><i style="color:var(--g);background:var(--g)"></i></div></div>
+      <div id="hiexp" style="margin-top:10px"></div>
+    </div>
+    <div class="panel">
+      <h2>Decisión de hoy</h2>
+      <div id="decision"></div>
+    </div>
+  </div>
+  <h2 style="margin-top:28px">Variables de condición</h2>
+  <div class="grid g3" id="cards"></div>
+  <h2 style="margin-top:28px">Índice de salud en el tiempo</h2>
+  <div class="fig s"><canvas id="hich"></canvas></div>
+  <p class="small">Bandas del índice: verde ≥ 80, amarillo 60–80, naranja 25–60, rojo &lt; 25. <span class="o oI">Inferido</span></p>
+</div></section>
+
+<section class="tab band" id="t-tendencias"><div class="wrap">
+  <div class="vbtn" id="vsel"></div>
+  <div class="grid hero">
+    <div><div class="fig"><canvas id="trch"></canvas></div><p class="small" id="trnote"></p></div>
+    <div class="panel" id="trinfo"></div>
+  </div>
+  <h2 style="margin-top:28px">Tiempo hasta el umbral, todas las variables</h2>
+  <div class="scroll"><table class="stack" id="ttab"></table></div>
+</div></section>
+
+<section class="tab band" id="t-alertas"><div class="wrap">
+  <h2>Órdenes de trabajo sugeridas</h2>
+  <p class="small">Prioridad = nivel alcanzado × criticidad del modo de falla en el AMFEC (Alto NPR ≥ 125; regla de seguridad S ≥ 9). Tareas tomadas de las acciones recomendadas del AMFEC y del informe P-F del grupo.</p>
+  <div class="grid" id="ots"></div>
+  <h2 style="margin-top:28px">Matriz de prioridad</h2>
+  <div class="scroll"><table class="stack"><thead><tr><th>Nivel alcanzado</th><th>Modo Alto (NPR ≥ 125) o S ≥ 9</th><th>Modo Medio o Bajo</th></tr></thead><tbody>
+    <tr><td><span class="chip l3">Paro</span></td><td>P1 Emergencia · detener la lavadora, intervenir de inmediato (MTTR meta ≤ 4 h)</td><td>P1 Emergencia · detener la lavadora</td></tr>
+    <tr><td><span class="chip l2">Alerta (punto P)</span></td><td>P2 Urgente · ≤ 7 días y antes del paro estimado</td><td>P3 Programada · próxima parada planeada, ≤ 30 días y antes del paro estimado</td></tr>
+    <tr><td><span class="chip l1">Precaución</span></td><td colspan="2">P4 Seguimiento · medir al doble de frecuencia y confirmar tendencia; sin intervención</td></tr>
+  </tbody></table></div>
+  <h2 style="margin-top:28px">Registro de cambios de nivel</h2>
+  <div class="scroll"><table class="stack" id="log"></table></div>
+</div></section>
+
+<section class="tab band" id="t-indicadores"><div class="wrap">
+  <h2>Indicadores de proceso frente a sus metas</h2>
+  <p class="small">Metas del informe de ciclo de vida: disponibilidad ≥ 95 %, MTBF ≥ 1.000 h, MTTR ≤ 4 h; presupuesto de mantenimiento S/ 5.400 al año (preventivo 3.000 + correctivo 1.200 + repuestos 800 + inspecciones 400, hoja LCC). <span class="o oS" id="kpiorig">Supuesto · simulado</span></p>
+  <div class="grid g3" id="kpitiles"></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div><h3>Disponibilidad mensual (%)</h3><div class="fig s"><canvas id="k1"></canvas></div></div>
+    <div><h3>MTBF acumulado (h)</h3><div class="fig s"><canvas id="k2"></canvas></div></div>
+    <div><h3>MTTR acumulado (h)</h3><div class="fig s"><canvas id="k3"></canvas></div></div>
+    <div><h3>Costo de mantenimiento acumulado (S/)</h3><div class="fig s"><canvas id="k4"></canvas></div></div>
+  </div>
+  <details><summary>Datos mensuales y carga de sus propios indicadores</summary>
+    <div class="scroll" style="margin-top:10px"><table id="kpitab"></table></div>
+    <p class="small" style="margin-top:10px">Columnas: mes, horas_programadas, horas_paro, fallas, horas_reparacion, costo_mant, origen. Archivo CSV o Excel.</p>
+    <div class="form"><input type="file" id="kfile" accept=".csv,.xlsx,.xls"><button class="ghost" id="kreset">Volver a datos simulados</button></div>
+    <div class="msg" id="kmsg"></div>
+  </details>
+</div></section>
+
+<section class="tab band" id="t-datos"><div class="wrap">
+  <h2>Variables de condición</h2>
+  <div class="scroll"><table class="stack" id="vtab"></table></div>
+  <h2 style="margin-top:28px">Umbrales de cuatro niveles y su fuente</h2>
+  <p class="small">La Precaución marca el inicio de la falla (el asterisco de la curva del Tema 11), la Alerta se ubica en el punto P y el Paro antes del punto F.</p>
+  <div class="scroll"><table class="stack" id="thtab"></table></div>
+  <h2 style="margin-top:28px">Pesos del índice de salud</h2>
+  <p class="small">Peso = NPR del modo de falla principal que anticipa la variable ÷ suma de esos NPR. El índice es el promedio ponderado de los puntajes (100 en la línea base, 80 en Precaución, 60 en Alerta, 25 en Paro). El semáforo del equipo toma el peor color entre el índice y la peor variable, para que un promedio alto no oculte una variable en Paro.</p>
+  <div class="scroll"><table class="stack" id="wtab"></table></div>
+
+  <h2 style="margin-top:28px">Cargar datos medidos</h2>
+  <div class="grid g2">
+    <div class="panel">
+      <h3>Archivo CSV o Excel</h3>
+      <p class="small">Formato largo: dia, variable, valor, origen. Variables: vib, trod, dtm, ais, corr, rpm. Si falta el origen, el dato queda como Supuesto.</p>
+      <div class="form"><input type="file" id="file" accept=".csv,.xlsx,.xls"></div>
+      <h3 style="margin-top:14px">O pegue el texto</h3>
+      <textarea id="paste" spellcheck="false"></textarea>
+      <div class="form" style="margin-top:8px"><button id="pload">Cargar texto</button><button class="ghost" id="tpl">Copiar plantilla</button><button class="ghost" id="clear">Borrar datos propios</button></div>
+      <div class="msg" id="fmsg"></div>
+    </div>
+    <div class="panel">
+      <h3>Registrar una medición manual</h3>
+      <form class="form" id="mform">
+        <label>Día<input type="number" id="md" min="0" step="1" value="0" style="width:90px"></label>
+        <label>Variable<select id="mv"></select></label>
+        <label>Valor<input type="number" id="mx" step="any" style="width:110px" required></label>
+        <label>Origen<select id="mo"><option>Medido</option><option>Inferido</option><option>Supuesto</option></select></label>
+        <button type="submit">Agregar</button>
+      </form>
+      <p class="small" style="margin-top:8px">Instrumentos sugeridos: app de vibración del celular (vib), termómetro infrarrojo (trod, dtm), megóhmetro 500 V (ais), pinza amperimétrica (corr), tacómetro óptico (rpm).</p>
+      <div id="owninfo" class="small"></div>
+    </div>
+  </div>
+
+  <h2 style="margin-top:28px">Supuestos declarados</h2>
+  <div class="scroll"><table class="stack" id="suptab"></table></div>
+  <h2 style="margin-top:28px">Limitaciones</h2>
+  <ul id="lim"></ul>
+</div></section>
+</main>
+
+<script>
+{
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=(x,d=1)=>Number.isFinite(x)?x.toLocaleString('es-CO',{maximumFractionDigits:d,minimumFractionDigits:0}):'—';
+
+/* ---------- AMFEC del grupo (hoja AMFEC_Motor_W5250S.xlsx) ---------- */
+const MODES={
+M1:{n:'Cortocircuito entre espiras (bobinado quemado)',S:9,O:3,D:5,ef:'El motor no arranca; tambor detenido con ropa y agua; rebobinado o cambio (> 4 h).',task:'Megar el bobinado; si se confirma el daño, rebobinar o cambiar el motor. Limitar arranques repetidos.',type:'A condición → restauración',res:'Técnico eléctrico · megóhmetro 500 V · motor de respaldo',h:8},
+M2:{n:'Rotura de la correa o del acople',S:7,O:4,D:4,ef:'El motor gira en vacío; tambor detenido y ciclo perdido.',task:'Cambiar la correa o el acople con el repuesto en stock; alinear poleas.',type:'Sustitución',res:'Técnico electromecánico · correa de repuesto · regla de alineación',h:1},
+M3:{n:'Patinaje de la transmisión (correa floja o desgastada)',S:5,O:6,D:4,ef:'No alcanza la velocidad de extracción; ropa más húmeda; progresa a rotura (M2).',task:'Medir y tensar la correa; cambiarla si está glaseada o desgastada.',type:'A condición',res:'Técnico electromecánico · tensiómetro de correas · correa de repuesto',h:1},
+M4:{n:'Falta de fase o desbalance de tensión',S:7,O:3,D:3,ef:'Pierde torque y se calienta; riesgo de quemar el bobinado (M1).',task:'Revisar fusibles, contactos y bornero a 400 V; reapretar conexiones.',type:'A condición',res:'Técnico eléctrico · pinza amperimétrica · torquímetro',h:1},
+M5:{n:'Sobrecarga por exceso o mala distribución de la carga',S:6,O:5,D:3,ef:'No llega a 702 rpm; extracción abortada o repetida.',task:'Verificar el peso de la carga (máx. 28 kg) y el procedimiento de carga uniforme; reentrenar al operario.',type:'Procedimiento operativo',res:'Supervisor de planta · báscula',h:0.5},
+M6:{n:'Desgaste o falla de los rodamientos del motor',S:8,O:4,D:5,ef:'Vibración y ruido crecientes; agarrotamiento, parada no planificada y daño a eje y estator.',task:'Cambiar los rodamientos LA y LOA del motor en parada planificada, tras confirmar con vibraciones y ultrasonido.',type:'A condición → sustitución',res:'Técnico electromecánico · 2 rodamientos + grasa · extractor y calentador de rodamientos',h:4},
+M7:{n:'Aflojamiento o desalineación de la base del motor',S:6,O:4,D:4,ef:'Golpeteo y vibración fuerte; acelera el desgaste de correa y rodamientos.',task:'Re-torquear los pernos de la base con torquímetro y realinear poleas.',type:'A condición',res:'Técnico electromecánico · torquímetro · regla de alineación',h:2},
+M8:{n:'Falla del sistema de frenado',S:10,O:2,D:4,ef:'Se puede abrir la puerta con el tambor girando (riesgo para el operador).',task:'Medir el tiempo de parada; cambiar la pastilla; bloqueo LOTO.',type:'A condición',res:'Técnico de mantenimiento · pastillas de freno',h:1},
+M9:{n:'Obstrucción de la ventilación por pelusa y humedad',S:7,O:5,D:4,ef:'El bobinado supera su temperatura de diseño; dispara la protección térmica; deriva en M1.',task:'Limpiar rejilla y aletas con aire comprimido y verificar con termografía.',type:'A condición → restauración',res:'Técnico electromecánico · compresor · cámara termográfica',h:1},
+M10:{n:'Ingreso de agua o humedad a la caja de bornes',S:9,O:3,D:5,ef:'Corrosión de bornes y fuga a carcasa; dispara el diferencial; riesgo eléctrico.',task:'Secar la caja de bornes, cambiar empaques y prensaestopas, megar y probar el diferencial.',type:'A condición → restauración',res:'Técnico eléctrico · kit de empaques · megóhmetro',h:2}};
+const npr=m=>m.S*m.O*m.D;
+const crit=m=>{const N=npr(m);return N>=125?'Alto':N>=90?'Medio':'Bajo'};
+
+/* ---------- Variables de condición ---------- */
+const VARS=[
+{id:'vib',name:'Vibración global en rodamientos',short:'Vibración',unit:'mm/s RMS',dir:'up',th:[0.71,1.8,4.5],base:0.55,sd:0.05,dec:2,modes:['M6','M7'],
+ method:'Vibrómetro o app de vibración del celular en LA y LOA (H, V, A), durante la extracción a 702 rpm',freq:30,pf:90,pfsrc:'Informe P-F del grupo: 3–6 meses, se usa el valor corto',lead:10,orig:'Medido',
+ src:['ISO 10816-1, máquina clase I, límite zona A/B','ISO 10816-1, límite zona B/C','ISO 10816-1, límite zona C/D']},
+{id:'trod',name:'Temperatura de la carcasa del rodamiento LA',short:'T rodamiento',unit:'°C',dir:'up',th:[60,70,80],base:47,sd:1.2,dec:1,modes:['M6'],
+ method:'Termómetro infrarrojo sobre la tapa del rodamiento, al final de la extracción',freq:7,pf:14,pfsrc:'Informe P-F del grupo (termografía): 2–6 semanas, valor corto',lead:10,orig:'Medido',
+ src:['Documento RCM del grupo: línea base + ~13 °C','Catálogo de rodamientos: temperatura de operación de la grasa estándar (verificar)','Catálogo de rodamientos: límite de la grasa estándar (verificar)']},
+{id:'dtm',name:'Elevación de temperatura de la carcasa del motor sobre el ambiente',short:'ΔT motor',unit:'K',dir:'up',th:[40,55,70],base:28,sd:1.6,dec:1,modes:['M9','M1'],
+ method:'Termografía o termómetro IR en la carcasa menos la temperatura ambiente (dato calculado)',freq:14,pf:30,pfsrc:'Supuesto del equipo',lead:2,orig:'Inferido',
+ src:['Documento RCM del grupo: línea base + 12 K','Documento RCM del grupo: 30 K por debajo del límite del devanado','IEC 60034-1: elevación clase B 80 K en devanado, carcasa ~10 K menor (supuesto)']},
+{id:'ais',name:'Resistencia de aislamiento a tierra (1 min, 500 V)',short:'Aislamiento',unit:'MΩ',dir:'down',th:[100,20,5],base:600,sd:0.05,dec:1,log:true,modes:['M10','M1'],
+ method:'Megóhmetro 500 V entre bobinado y carcasa, motor desenergizado (LOTO)',freq:30,pf:60,pfsrc:'Supuesto del equipo',lead:3,orig:'Medido',
+ src:['Documento RCM del grupo: caída > 80 % de la línea base','Documento RCM del grupo: 4 veces el mínimo de la norma','IEEE 43-2013: mínimo 5 MΩ para devanados de baja tensión']},
+{id:'corr',name:'Corriente del motor durante la extracción',short:'Corriente',unit:'% In',dir:'up',th:[90,100,115],base:78,sd:2,dec:0,modes:['M5','M4','M6'],
+ method:'Pinza amperimétrica en las 3 fases; se reporta el promedio en % de la corriente nominal de placa',freq:7,pf:21,pfsrc:'Supuesto del equipo',lead:2,orig:'Medido',
+ src:['Documento RCM del grupo: 90 % de la corriente nominal','Placa del motor: corriente nominal (100 %)','NEMA MG-1: factor de servicio 1,15']},
+{id:'rpm',name:'Velocidad del tambor en extracción',short:'Velocidad',unit:'rpm',dir:'down',th:[690,670,640],base:702,sd:2,dec:0,modes:['M3','M2','M5'],
+ method:'Tacómetro óptico con cinta reflectiva en el tambor',freq:14,pf:45,pfsrc:'Supuesto del equipo',lead:3,orig:'Medido',
+ src:['Ficha Electrolux W5250S: 702 rpm; RCM del grupo −1,7 %','Documento RCM del grupo: −4,5 % (≈ 182 G)','Documento RCM del grupo: −9 % (≈ 166 G, humedad residual fuera de estándar)']}];
+const NP=VARS.reduce((a,v)=>a+npr(MODES[v.modes[0]]),0);
+VARS.forEach((v,i)=>{v.w=npr(MODES[v.modes[0]])/NP;v.i=i});
+const V=Object.fromEntries(VARS.map(v=>[v.id,v]));
+const LV=['Normal','Precaución','Alerta','Paro'];
+const COL=['--g','--y','--o','--r'];
+const probe=document.createElement('i');probe.style.display='none';document.body.appendChild(probe);
+const css=n=>{probe.style.color=`var(${n})`;return getComputedStyle(probe).color};
+const alpha=(c,a)=>{const m=c.match(/[\d.]+/g);return m?`rgba(${m[0]},${m[1]},${m[2]},${a})`:c};
+
+function level(v,x){const t=v.th;return v.dir==='up'?(x<t[0]?0:x<t[1]?1:x<t[2]?2:3):(x>t[0]?0:x>t[1]?1:x>t[2]?2:3)}
+const T=(v,x)=>v.log?Math.log10(Math.max(x,1e-6)):x;
+function score(v,x){let b=T(v,v.base),t=v.th.map(z=>T(v,z)),y=T(v,x);if(v.dir==='down'){b=-b;t=t.map(z=>-z);y=-y}
+ const xs=[b,t[0],t[1],t[2],t[2]+(t[2]-t[1])],ss=[100,80,60,25,0];if(y<=xs[0])return 100;
+ for(let i=1;i<xs.length;i++)if(y<=xs[i])return ss[i-1]+(ss[i]-ss[i-1])*(y-xs[i-1])/(xs[i]-xs[i-1]);return 0}
+const hiLevel=h=>h>=80?0:h>=60?1:h>=25?2:3;
+const chip=l=>`<span class="chip l${l}"><span class="dot" style="background:var(${COL[l]})"></span>${LV[l]}</span>`;
+const oTag=o=>{const k=/^med/i.test(o)?'M':/^inf/i.test(o)?'I':'S';return `<span class="o o${k}">${esc(o)}</span>`};
+const fv=(v,x)=>fmt(x,v.dec);
+
+/* ---------- Simulador ---------- */
+const SCEN={
+ normal:{name:'Condición normal (sin falla)',tF:365,eff:{}},
+ m6:{name:'M6 · Desgaste de rodamientos (normal → paro)',tF:330,mode:'M6',eff:{vib:{t0:170,tP:240,vF:9},trod:{t0:270,tP:300,vF:96},corr:{t0:260,vF:97,a:2}}},
+ m9:{name:'M9 · Ventilación obstruida por pelusa',tF:300,mode:'M9',eff:{dtm:{t0:190,tP:270,vF:85},corr:{t0:200,vF:95,a:1.5},ais:{t0:150,vF:150,a:2}}},
+ m10:{name:'M10 · Humedad en la caja de bornes',tF:280,mode:'M10',eff:{ais:{t0:140,tP:220,vF:2}}},
+ m3:{name:'M3 · Patinaje de la correa',tF:260,mode:'M3',eff:{rpm:{t0:140,tP:215,vF:615},corr:{t0:150,vF:87,a:1}}}};
+const H=(u,a)=>Math.abs(a)<1e-6?u:(Math.exp(a*u)-1)/(Math.exp(a)-1);
+function solveA(uP,f){let lo=-30,hi=30;for(let k=0;k<70;k++){const m=(lo+hi)/2;if(H(uP,m)>f)lo=m;else hi=m}return (lo+hi)/2}
+function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function simulate(key,samp,seed){
+ const sc=SCEN[key],R=rng(seed),g=()=>{let u=0,w=0;while(!u)u=R();while(!w)w=R();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*w)};
+ const out={};
+ for(const v of VARS){
+  const e=sc.eff[v.id],arr=[],b=T(v,v.base);let a=e?(e.a??2.5):0;
+  if(e&&e.tP!=null){const f=(T(v,v.th[1])-b)/(T(v,e.vF)-b);a=solveA((e.tP-e.t0)/(sc.tF-e.t0),f)}
+  const step=samp==='daily'?1:v.freq;
+  for(let d=v.i%3;d<=sc.tF;d+=step){
+   let y=b;if(e&&d>e.t0)y+= (T(v,e.vF)-b)*H((d-e.t0)/(sc.tF-e.t0),a);
+   y+= v.log?v.sd*g():v.sd*g()*(v.id==='vib'?Math.max(1,(v.log?1:y/b)):1);
+   const x=v.log?10**y:Math.max(0.01,y);
+   arr.push({d,x,o:'Supuesto · simulado'});
+  }
+  out[v.id]=arr;
+ }
+ return out;
+}
+
+/* ---------- Estado ---------- */
+const S={src:'sim',scen:'m6',samp:'plan',seed:7,day:0,data:null,own:{},tv:'vib',kpi:null,kpiOrig:'Supuesto · simulado'};
+VARS.forEach(v=>S.own[v.id]=[]);
+function horizon(){if(S.src==='sim')return SCEN[S.scen].tF;let m=0;for(const v of VARS)for(const p of S.own[v.id])m=Math.max(m,p.d);return m}
+function regen(){S.data=S.src==='sim'?simulate(S.scen,S.samp,S.seed):S.own;const hz=horizon();const r=$('#day');r.max=hz;if(S.day>hz)S.day=hz;r.value=S.day}
+const upto=(id,d=S.day)=>S.data[id].filter(p=>p.d<=d);
+function cur(id,d=S.day){const a=S.data[id];let c=null;for(const p of a){if(p.d<=d)c=p;else break}return c}
+
+/* ---------- Tendencia ---------- */
+function lsq(xs,ys){const n=xs.length;let sx=0,sy=0,sxx=0,sxy=0;for(let i=0;i<n;i++){sx+=xs[i];sy+=ys[i];sxx+=xs[i]*xs[i];sxy+=xs[i]*ys[i]}const den=n*sxx-sx*sx;const b=den?(n*sxy-sx*sy)/den:0;return{a:(sy-b*sx)/n,b}}
+function r2(ys,ps){const m=ys.reduce((a,b)=>a+b,0)/ys.length;let rs=0,ts=0;ys.forEach((y,i)=>{rs+=(y-ps[i])**2;ts+=(y-m)**2});return ts>0?1-rs/ts:0}
+function fit(v){
+ const pts=upto(v.id);if(pts.length<3)return null;
+ let s=pts.length-1;while(s>0&&score(v,pts[s-1].x)<92)s--;
+ let st=Math.max(0,s-2);if(pts.length-st<5)st=Math.max(0,pts.length-8);if(pts.length-st>25)st=pts.length-25;
+ const w=pts.slice(st),t=w.map(p=>p.d),y=w.map(p=>p.x);
+ const L=lsq(t,y),E=lsq(t,y.map(Math.log));
+ const rl=r2(y,t.map(x=>L.a+L.b*x)),re=r2(y,t.map(x=>Math.exp(E.a+E.b*x)));
+ const exp=re>rl;const m=exp?E:L;
+ const f=x=>exp?Math.exp(m.a+m.b*x):m.a+m.b*x;
+ const lvl=level(v,pts[pts.length-1].x);
+ const cross=(th,k)=>{if(lvl>=k)return 0;const tt=exp?(th>0?(Math.log(th)-m.a)/m.b:NaN):(th-m.a)/m.b;const r=tt-S.day;return Number.isFinite(r)?Math.max(r,0.5):Infinity};
+ const good=(v.dir==='up'?m.b>0:m.b<0);
+ return{n:w.length,t0:t[0],exp,a:m.a,b:m.b,rl,re,f,tA:good?cross(v.th[1],2):Infinity,tP:good?cross(v.th[2],3):Infinity,lvl}
+}
+const days=x=>x===0?'ya alcanzado':x<1?'inminente (< 1 d)':Number.isFinite(x)?(x>365?'> 365 d':fmt(x,0)+' d'):'no se alcanza (sin degradación)';
+function verdict(v,F){
+ const net=v.pf-v.freq;
+ if(!F)return{c:0,t:'Sin datos suficientes para ajustar una tendencia (mínimo 3 puntos).'};
+ if(F.lvl===3)return{c:3,t:'Ya está en Paro: la lavadora debe detenerse. No queda intervalo para planear.'};
+ if(!Number.isFinite(F.tP)||(F.lvl===0&&F.tP>2*v.pf))return{c:0,t:`Sin tendencia de degradación. Se sigue midiendo cada ${v.freq} d (≤ ½ P-F).`};
+ if(F.tP<v.lead)return{c:3,t:`No alcanza: quedan ${fmt(F.tP,0)} d hasta el paro y la intervención necesita ${v.lead} d (repuesto + programación). Parada controlada ya.`};
+ if(F.tP<net)return{c:2,t:`Alcanza, con margen corto: quedan ${fmt(F.tP,0)} d frente a ${v.lead} d necesarios, pero es menos que el P-F neto supuesto (${net} d): la falla avanza más rápido de lo previsto. Programar ya.`};
+ return{c:F.lvl>=2?2:1,t:`Alcanza para planear: quedan ${fmt(F.tP,0)} d hasta el paro, más que el P-F neto (${net} d) y que los ${v.lead} d que exige la intervención.`};
+}
+
+/* ---------- Órdenes de trabajo ---------- */
+function orders(){
+ const L=[];
+ for(const v of VARS){const c=cur(v.id);if(!c)continue;const l=level(v,c.x);if(l<1)continue;
+  const m=MODES[v.modes[0]],F=fit(v),hi=crit(m)==='Alto'||m.S>=9;
+  let p,pl;
+  if(l===3){p='P1';pl='Inmediato: detener la lavadora y reparar (meta MTTR ≤ 4 h)'}
+  else if(l===2){const lim=hi?7:30;const tp=F&&Number.isFinite(F.tP)?F.tP:Infinity;const dd=Math.max(1,Math.floor(Math.min(lim,tp-1)));p=hi?'P2':'P3';pl=`Antes del día ${S.day+dd} (en ≤ ${dd} d)${Number.isFinite(tp)?`; paro estimado en ${fmt(tp,0)} d`:''}`}
+  else{p='P4';pl=`Medir cada ${Math.max(1,Math.round(v.freq/2))} d durante el siguiente intervalo y confirmar la tendencia`}
+  L.push({v,c,l,m,p,pl,F})}
+ return L.sort((a,b)=>a.p.localeCompare(b.p)||npr(b.m)-npr(a.m));
+}
+const PN={P1:'P1 · Emergencia',P2:'P2 · Urgente',P3:'P3 · Programada',P4:'P4 · Seguimiento'};
+function otText(o){const m=o.m,k=o.v.modes[0];return `ORDEN DE TRABAJO SUGERIDA OT-${String(S.day).padStart(3,'0')}-${o.v.id.toUpperCase()}
+Equipo: Lavadora Electrolux W5250S · Motor de accionamiento del tambor
+Prioridad: ${PN[o.p]}
+Disparo: ${o.v.name} = ${fv(o.v,o.c.x)} ${o.v.unit} (${LV[o.l]}) el día ${o.c.d} [${o.c.o}]
+Modo de falla (AMFEC): ${k} ${m.n} · S${m.S} O${m.O} D${m.D} · NPR ${npr(m)} (${crit(m)})
+Efecto: ${m.ef}
+Tarea (RCM): ${o.l===1?'Seguimiento reforzado; sin intervención':m.task} [${m.type}]
+Recurso: ${m.res} · ${m.h} h estimadas
+Plazo: ${o.pl}`}
+
+/* ---------- Render: encabezado y estado ---------- */
+function hiAt(d){let s=0,w=0,worst=0;for(const v of VARS){const c=cur(v.id,d);if(!c)continue;s+=v.w*score(v,c.x);w+=v.w;worst=Math.max(worst,level(v,c.x))}return w?{hi:s/w,worst}:null}
+function renderHead(){
+ const O=orders(),h=hiAt(S.day);
+ $('#dayv').textContent=S.day+(S.src==='sim'&&S.day>=SCEN[S.scen].tF&&S.scen!=='normal'?' · punto F (falla funcional)':'');
+ if(!h){$('#finding').textContent='Sin datos para el día seleccionado';$('#findsub').textContent='Cargue datos en la pestaña Datos y supuestos.';return}
+ const top=O[0];
+ if(!top){$('#finding').textContent=`Motor en condición normal · índice de salud ${fmt(h.hi,0)}`;$('#findsub').textContent='Ninguna variable fuera de su zona normal. Se mantiene el plan de mediciones.'}
+ else{const tp=top.l<3&&top.F&&Number.isFinite(top.F.tP)?` · paro estimado en ${fmt(top.F.tP,0)} d`:'';
+  $('#finding').textContent=`${top.l===3?'Detener la lavadora: ':''}${top.v.short} en ${LV[top.l]} (${top.v.modes[0]}, NPR ${npr(top.m)})${tp}`;
+  $('#findsub').textContent=`Índice de salud ${fmt(h.hi,0)} · ${O.length} acción(es) sugerida(s) · prioridad más alta ${PN[top.p]}`}
+}
+function gauge(hi){
+ const W=400,Hh=230,cx=200,cy=200,r=160,rw=30;const P=p=>{const a=Math.PI*(1-p/100);return[cx+r*Math.cos(a),cy-r*Math.sin(a)]};
+ const seg=(a,b,c)=>{const[x1,y1]=P(a),[x2,y2]=P(b);return `<path d="M${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2}" style="stroke:var(${c})" stroke-width="${rw}" fill="none"/>`};
+ const[nx,ny]=P(Math.max(0,Math.min(100,hi)));
+ return `<svg viewBox="0 0 ${W} ${Hh}" role="img" aria-label="Índice de salud ${fmt(hi,0)} de 100">${seg(0,25,'--r')}${seg(25,60,'--o')}${seg(60,80,'--y')}${seg(80,100,'--g')}
+ <line x1="${cx}" y1="${cy}" x2="${cx+(nx-cx)*0.78}" y2="${cy+(ny-cy)*0.78}" style="stroke:var(--ink)" stroke-width="6" stroke-linecap="round"/><circle cx="${cx}" cy="${cy}" r="12" style="fill:var(--ink)"/>
+ <text x="${cx}" y="${cy-50}" text-anchor="middle" font-size="58" font-weight="700" style="fill:var(--ink)">${fmt(hi,0)}</text>
+ <text x="${cx-r}" y="${cy+26}" text-anchor="middle" font-size="15" style="fill:var(--mut)">0</text><text x="${cx+r}" y="${cy+26}" text-anchor="middle" font-size="15" style="fill:var(--mut)">100</text></svg>`}
+function spark(v){const p=upto(v.id).slice(-24);if(p.length<2)return '';const ys=p.map(q=>T(v,q.x)),lo=Math.min(...ys,T(v,v.th[0])),hi=Math.max(...ys,T(v,v.th[0]));const W=220,Hh=40;
+ const sx=i=>i/(p.length-1)*W,sy=y=>Hh-4-(y-lo)/((hi-lo)||1)*(Hh-8);const ty=sy(T(v,v.th[1]));
+ return `<svg viewBox="0 0 ${W} ${Hh}" width="100%" height="40" preserveAspectRatio="none" aria-hidden="true">${ty>0&&ty<Hh?`<line x1="0" x2="${W}" y1="${ty}" y2="${ty}" style="stroke:var(--o)" stroke-dasharray="4 4"/>`:''}<polyline fill="none" style="stroke:var(--ink)" stroke-width="2" points="${ys.map((y,i)=>sx(i)+','+sy(y)).join(' ')}"/></svg>`}
+function renderEstado(){
+ const h=hiAt(S.day);
+ if(!h){$('#gauge').innerHTML='<div class="empty">Sin datos</div>';$('#cards').innerHTML='';$('#hiexp').innerHTML='';$('#decision').innerHTML='';return}
+ const hl=hiLevel(h.hi),eq=Math.max(hl,h.worst);
+ $('#gauge').innerHTML=gauge(h.hi);
+ document.querySelectorAll('.light i').forEach((el,i)=>el.classList.toggle('on',3-i===eq));
+ $('#hiexp').innerHTML=`<div class="row" style="margin-bottom:6px">Semáforo del equipo: ${chip(eq)} <span class="o oI">Inferido</span></div>
+  <p class="small">Índice ${fmt(h.hi,1)} → ${LV[hl]}. Peor variable → ${LV[h.worst]}. ${eq>hl?'Manda la peor variable: el promedio no puede ocultar un modo de falla crítico.':'El índice y las variables coinciden.'}</p>`;
+ const O=orders();
+ $('#decision').innerHTML=O.length?O.slice(0,3).map(o=>`<div style="margin-bottom:12px"><div class="row"><b>${PN[o.p]}</b>${chip(o.l)}</div><div>${esc(o.l===1?o.v.short+': '+o.pl:o.m.task)}</div><div class="small">${o.v.modes[0]} · ${esc(o.m.n)}${o.l===1?'':' · '+esc(o.pl)}</div></div>`).join('')+`<a href="#alertas" style="color:var(--ink);font-weight:600">Ver órdenes completas</a>`
+  :`<p>Sin alertas. Plan vigente: mediciones cada ½ P-F o antes (vibraciones mensuales, temperatura del rodamiento semanal).</p><p class="small">Para la demostración de normal a paro, mueva el día o pulse Reproducir.</p>`;
+ $('#cards').innerHTML=VARS.map(v=>{const c=cur(v.id);if(!c)return `<div class="card"><h3>${esc(v.name)}</h3><div class="small">Sin datos</div></div>`;const l=level(v,c.x);
+  return `<div class="card" data-v="${v.id}" tabindex="0"><div class="row" style="justify-content:space-between"><h3>${esc(v.short)}</h3>${chip(l)}</div>
+  <div class="big">${fv(v,c.x)} <span class="unit">${esc(v.unit)}</span></div>${spark(v)}
+  <div class="row small">${oTag(c.o)}<span>día ${c.d}</span><span>puntaje ${fmt(score(v,c.x),0)}</span><span>peso ${fmt(v.w*100,1)} %</span></div>
+  <div class="small">${v.modes.join(', ')} · ${esc(MODES[v.modes[0]].n)}</div></div>`}).join('');
+}
+
+/* ---------- Gráficas ---------- */
+const bands={id:'bands',beforeDatasetsDraw(c){const b=c.options.plugins.bands;if(!b)return;const{ctx,chartArea:a,scales:{x,y}}=c;ctx.save();
+ for(const z of b.zones||[]){const p1=y.getPixelForValue(z.from??y.min),p2=y.getPixelForValue(z.to??y.max);const tp=Math.max(Math.min(p1,p2),a.top),bt=Math.min(Math.max(p1,p2),a.bottom);if(bt>tp){ctx.fillStyle=z.c;ctx.fillRect(a.left,tp,a.right-a.left,bt-tp)}}
+ let li=0;for(const l of b.v||[]){const ly=a.top+14+(li++)*16;const px=x.getPixelForValue(l.x);if(px<a.left||px>a.right)continue;ctx.strokeStyle=l.c;ctx.setLineDash(l.dash||[]);ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px,a.top);ctx.lineTo(px,a.bottom);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=l.c;ctx.font='600 13px Hanken Grotesk, sans-serif';ctx.textAlign=px>a.right-90?'right':'left';ctx.fillText(l.t,px+(px>a.right-90?-6:6),ly)}
+ ctx.restore()}};
+const hasChart=typeof Chart!=='undefined';
+if(hasChart){Chart.register(bands);Chart.defaults.font.family='Hanken Grotesk, sans-serif';Chart.defaults.font.size=13}
+function zones(v){const h=s=>alpha(css(s),0.16);const t=v.th;
+ return v.dir==='up'?[{to:t[0],c:h('--g')},{from:t[0],to:t[1],c:h('--y')},{from:t[1],to:t[2],c:h('--o')},{from:t[2],c:h('--r')}]
+  :[{from:t[0],c:h('--g')},{from:t[1],to:t[0],c:h('--y')},{from:t[2],to:t[1],c:h('--o')},{to:t[2],c:h('--r')}]}
+let trC,hiC,kC=[];
+function axes(xt,yt,log){const ink=css('--mut'),gr=css('--line');return{x:{type:'linear',title:{display:!!xt,text:xt,color:ink},ticks:{color:ink},grid:{color:gr}},y:{type:log?'logarithmic':'linear',title:{display:!!yt,text:yt,color:ink},ticks:{color:ink},grid:{color:gr}}}}
+function renderTrend(){
+ const v=V[S.tv];$('#vsel').innerHTML=VARS.map(x=>`<button class="${x.id===S.tv?'on':''}" data-tv="${x.id}">${esc(x.short)}</button>`).join('');
+ const pts=upto(v.id),F=fit(v),net=v.pf-v.freq,vd=verdict(v,F);
+ if(hasChart){
+  const proj=[];if(F){const end=Math.min(S.day+(Number.isFinite(F.tP)?F.tP+10:60),S.day+200);for(let d=F.t0;d<=end;d+=Math.max(1,(end-F.t0)/60))proj.push({x:d,y:F.f(d)})}
+  const ys=pts.map(p=>p.x).concat(v.th);let lo=Math.min(...ys),hi=Math.max(...ys);
+  if(v.log){lo=Math.max(1,lo/1.6);hi=hi*1.6}else{const pad=(hi-lo)*0.12||1;lo=v.dir==='up'?Math.max(0,Math.min(lo,v.base)-pad):lo-pad;hi=hi+pad}
+  const vl=[{x:S.day,t:'Hoy',c:css('--ink')}];
+  const pa=pts.find(p=>level(v,p.x)>=2);if(pa)vl.push({x:pa.d,t:'P (alerta)',c:css('--o'),dash:[6,4]});
+  if(S.src==='sim'&&S.scen!=='normal')vl.push({x:SCEN[S.scen].tF,t:'F',c:css('--r'),dash:[6,4]});
+  const data={datasets:[{label:'Mediciones',data:pts.map(p=>({x:p.d,y:p.x})),borderColor:css('--ink'),backgroundColor:css('--ink'),showLine:true,borderWidth:1.5,pointRadius:pts.length>80?0:3},
+   {label:F?(F.exp?'Ajuste exponencial':'Ajuste lineal'):'Ajuste',data:proj,borderColor:'#3b6fd6',borderDash:[7,5],borderWidth:2.5,pointRadius:0,showLine:true}]};
+  const opt={animation:false,maintainAspectRatio:false,parsing:false,plugins:{legend:{labels:{color:css('--ink')}},bands:{zones:zones(v),v:vl}},scales:axes('Día de operación',v.unit,v.log)};
+  opt.scales.y.min=lo;opt.scales.y.max=hi;opt.scales.x.max=Math.max(S.day+10,...proj.map(p=>p.x),SCEN[S.scen]&&S.src==='sim'?Math.min(SCEN[S.scen].tF,S.day+200):0);opt.scales.x.min=0;
+  if(trC){trC.data=data;trC.options=opt;trC.update('none')}else trC=new Chart($('#trch'),{type:'scatter',data,options:opt});
+ }
+ $('#trnote').innerHTML=`Bandas: verde Normal, amarillo Precaución, naranja Alerta (punto P), rojo Paro. Mediciones ${oTag(pts.at(-1)?.o||v.orig)} · ajuste y proyección <span class="o oI">Inferido</span>`;
+ $('#trinfo').innerHTML=`<h2>${esc(v.name)}</h2><div class="kv">
+  <span>Modelo elegido (mayor R²)</span><span>${F?(F.exp?'Exponencial':'Lineal'):'—'}</span>
+  <span>R² lineal / exponencial</span><span>${F?fmt(F.rl,3)+' / '+fmt(F.re,3):'—'}</span>
+  <span>Ecuación</span><span>${F?(F.exp?`x = e^(${fmt(F.a,3)} ${F.b>=0?'+':'−'} ${fmt(Math.abs(F.b),4)}·t)`:`x = ${fmt(F.a,2)} ${F.b>=0?'+':'−'} ${fmt(Math.abs(F.b),4)}·t`):'—'}</span>
+  <span>Puntos usados</span><span>${F?F.n+' (desde el día '+F.t0+')':'—'}</span>
+  <span>Tiempo hasta Alerta (P)</span><span>${F?days(F.tA):'—'}</span>
+  <span>Tiempo hasta Paro</span><span>${F?days(F.tP):'—'}</span>
+  <span>Intervalo P-F</span><span>${v.pf} d</span>
+  <span>Frecuencia de medición</span><span>${v.freq} d</span>
+  <span>P-F neto (P-F − frecuencia)</span><span>${net} d</span>
+  <span>Tiempo para intervenir</span><span>${v.lead} d</span></div>
+  <div class="verd l${vd.c}">${esc(vd.t)}</div>
+  <p class="small" style="margin-top:10px">Fuente del P-F: ${esc(v.pfsrc)}. Límites del método: la tendencia usa solo los puntos de la excursión actual; con pocos puntos o mucho ruido el R² baja y la proyección es menos confiable. La exponencial supone degradación acelerada (típica de rodamientos); extrapolar más allá del P-F aumenta el error.</p>`;
+ $('#ttab').innerHTML=`<thead><tr><th>Variable</th><th>Nivel</th><th>Modelo</th><th>Hasta Alerta</th><th>Hasta Paro</th><th>P-F neto</th><th>¿Alcanza para planear?</th></tr></thead><tbody>`+
+  VARS.map(x=>{const c=cur(x.id),Fx=fit(x),vx=verdict(x,Fx);return `<tr><td>${esc(x.short)}</td><td>${c?chip(level(x,c.x)):'—'}</td><td>${Fx?(Fx.exp?'Exponencial':'Lineal'):'—'}</td><td class="n">${Fx?days(Fx.tA):'—'}</td><td class="n">${Fx?days(Fx.tP):'—'}</td><td class="n">${x.pf-x.freq} d</td><td>${esc(vx.t.split(':')[0])}</td></tr>`}).join('')+'</tbody>';
+}
+function renderHiChart(){if(!hasChart)return;const pts=[];const st=Math.max(1,Math.round(S.day/150));for(let d=0;d<=S.day;d+=st){const h=hiAt(d);if(h)pts.push({x:d,y:h.hi})}
+ const z=[{from:80,c:alpha(css('--g'),.16)},{from:60,to:80,c:alpha(css('--y'),.16)},{from:25,to:60,c:alpha(css('--o'),.16)},{to:25,c:alpha(css('--r'),.16)}];
+ const data={datasets:[{label:'Índice de salud',data:pts,borderColor:css('--ink'),pointRadius:0,borderWidth:2,showLine:true}]};
+ const opt={animation:false,maintainAspectRatio:false,parsing:false,plugins:{legend:{display:false},bands:{zones:z}},scales:axes('Día de operación','Índice (0–100)')};opt.scales.y.min=0;opt.scales.y.max=100;opt.scales.x.min=0;opt.scales.x.max=Math.max(10,+$('#day').max);
+ if(hiC){hiC.data=data;hiC.options=opt;hiC.update('none')}else hiC=new Chart($('#hich'),{type:'scatter',data,options:opt})}
+
+/* ---------- Alertas ---------- */
+function renderAlertas(){
+ const O=orders();
+ $('#ots').innerHTML=O.length?O.map((o,i)=>`<article class="ot ${o.p.toLowerCase()}"><div class="row" style="justify-content:space-between"><h3>${PN[o.p]} · OT-${String(S.day).padStart(3,'0')}-${o.v.id.toUpperCase()}</h3>${chip(o.l)}</div>
+  <dl><dt>Disparo</dt><dd>${esc(o.v.name)} = <b>${fv(o.v,o.c.x)} ${esc(o.v.unit)}</b> el día ${o.c.d} ${oTag(o.c.o)}</dd>
+  <dt>Modo de falla</dt><dd>${o.v.modes[0]} · ${esc(o.m.n)} · S${o.m.S} O${o.m.O} D${o.m.D} · NPR ${npr(o.m)} (${crit(o.m)})${o.m.S>=9?' · regla de seguridad S ≥ 9':''}</dd>
+  <dt>Efecto</dt><dd>${esc(o.m.ef)}</dd>
+  <dt>Tarea RCM</dt><dd>${o.l===1?'Seguimiento reforzado; sin intervención todavía.':esc(o.m.task)} <span class="small">[${esc(o.m.type)}]</span></dd>
+  <dt>Recurso</dt><dd>${esc(o.m.res)} · ${o.m.h} h</dd>
+  <dt>Plazo</dt><dd>${esc(o.pl)} <span class="o oI">Inferido</span></dd></dl>
+  <button class="ghost" data-copy="${i}">Copiar orden</button></article>`).join('')
+  :'<div class="empty">Ninguna variable fuera de Normal en el día seleccionado. No hay órdenes sugeridas.</div>';
+ const ev=[];for(const v of VARS){let pl=0;for(const p of upto(v.id)){const l=level(v,p.x);if(l!==pl){ev.push({d:p.d,v,from:pl,to:l,x:p.x,o:p.o});pl=l}}}
+ ev.sort((a,b)=>b.d-a.d);
+ $('#log').innerHTML=ev.length?`<thead><tr><th>Día</th><th>Variable</th><th>Cambio</th><th>Valor</th><th>Origen</th></tr></thead><tbody>${ev.slice(0,40).map(e=>`<tr><td class="n">${e.d}</td><td>${esc(e.v.short)}</td><td>${LV[e.from]} → ${chip(e.to)}</td><td class="n">${fv(e.v,e.x)} ${esc(e.v.unit)}</td><td>${oTag(e.o)}</td></tr>`).join('')}</tbody>`:'<tbody><tr><td class="small">Sin cambios de nivel hasta el día seleccionado.</td></tr></tbody>';
+}
+
+/* ---------- Indicadores ---------- */
+const MES=['Dic-25','Ene-26','Feb-26','Mar-26','Abr-26','May-26','Jun-26','Jul-26','Ago-26','Sep-26','Oct-26','Nov-26'];
+function kpiDefault(){return MES.map((m,i)=>({mes:m,hp:62,hpar:i===3?3:i===9?2:0,f:i===3||i===9?1:0,hr:i===3?2.5:i===9?1.5:0,c:285+(i===3?380:0)+(i===9?220:0),o:'Supuesto · simulado'}))}
+function renderKPI(){
+ const K=S.kpi||kpiDefault();let op=0,fa=0,hr=0,cc=0;const acc=K.map((r,i)=>{op+=r.hp-r.hpar;fa+=r.f;hr+=r.hr;cc+=r.c;return{disp:r.hp?(r.hp-r.hpar)/r.hp*100:NaN,mtbf:fa?op/fa:NaN,mttr:fa?hr/fa:NaN,cost:cc,bud:450*(i+1)}});
+ const L=acc.at(-1),tp=K.reduce((a,r)=>a+r.hp,0),tpar=K.reduce((a,r)=>a+r.hpar,0),D=tp?(tp-tpar)/tp*100:NaN;
+ const tile=(n,val,meta,ok,u)=>`<div class="panel"><div class="small">${n}</div><div class="big">${val}<span class="unit"> ${u}</span></div><div class="row small"><span>Meta ${meta}</span><span class="chip ${ok?'l0':'l3'}">${ok?'Cumple':'No cumple'}</span><span class="o oI">Inferido</span></div></div>`;
+ $('#kpitiles').innerHTML=tile('Disponibilidad del periodo',fmt(D,1),'≥ 95 %',D>=95,'%')+tile('MTBF acumulado',Number.isFinite(L.mtbf)?fmt(L.mtbf,0):'sin fallas','≥ 1.000 h',!Number.isFinite(L.mtbf)||L.mtbf>=1000,'h')+tile('MTTR acumulado',fmt(L.mttr,1),'≤ 4 h',!Number.isFinite(L.mttr)||L.mttr<=4,'h')+tile('Costo de mantenimiento acumulado','S/ '+fmt(L.cost,0),'≤ S/ '+fmt(L.bud,0),L.cost<=L.bud,'');
+ $('#kpiorig').outerHTML=`<span id="kpiorig">${oTag(S.kpiOrig)}</span>`;
+ $('#kpitab').innerHTML=`<thead><tr><th>Mes</th><th>Horas programadas</th><th>Horas de paro</th><th>Fallas</th><th>Horas de reparación</th><th>Costo (S/)</th><th>Origen</th></tr></thead><tbody>${K.map(r=>`<tr><td>${esc(r.mes)}</td><td class="n">${fmt(r.hp)}</td><td class="n">${fmt(r.hpar)}</td><td class="n">${fmt(r.f,0)}</td><td class="n">${fmt(r.hr)}</td><td class="n">${fmt(r.c,0)}</td><td>${oTag(r.o)}</td></tr>`).join('')}</tbody>`;
+ if(!hasChart)return;
+ const lab=K.map(r=>r.mes),ink=css('--ink'),mt=css('--o');
+ const mk=(i,vals,meta,metaLab,extra={})=>{const data={labels:lab,datasets:[{label:'Real',data:vals,borderColor:ink,backgroundColor:ink,pointRadius:3,spanGaps:true},{label:metaLab,data:Array.isArray(meta)?meta:lab.map(()=>meta),borderColor:mt,borderDash:[6,4],pointRadius:0}]};
+  const opt={animation:false,maintainAspectRatio:false,plugins:{legend:{labels:{color:ink}}},scales:{x:{ticks:{color:css('--mut')},grid:{color:css('--line')}},y:{ticks:{color:css('--mut')},grid:{color:css('--line')},...extra}}};
+  if(kC[i]){kC[i].data=data;kC[i].options=opt;kC[i].update('none')}else kC[i]=new Chart($('#k'+(i+1)),{type:'line',data,options:opt})};
+ mk(0,acc.map(a=>a.disp),95,'Meta 95 %',{suggestedMin:90,suggestedMax:100});mk(1,acc.map(a=>a.mtbf),1000,'Meta 1.000 h',{min:0});mk(2,acc.map(a=>a.mttr),4,'Meta 4 h',{min:0});mk(3,acc.map(a=>a.cost),acc.map(a=>a.bud),'Presupuesto acumulado',{min:0});
+}
+
+/* ---------- Datos y supuestos ---------- */
+function renderDatos(){
+ $('#vtab').innerHTML=`<thead><tr><th>Variable</th><th>Unidad</th><th>Método</th><th>Frecuencia</th><th>Modo de falla que anticipa (efecto · criticidad)</th><th>Origen</th></tr></thead><tbody>${VARS.map(v=>`<tr><td><b>${esc(v.name)}</b> <span class="small">(${v.id})</span></td><td>${esc(v.unit)}</td><td>${esc(v.method)}</td><td>cada ${v.freq} d (≤ ½ P-F = ${v.pf/2} d)</td><td>${v.modes.map((k,i)=>`<div${i?' class="small"':''}>${k} ${esc(MODES[k].n)}${i?'':` · ${esc(MODES[k].ef)}`} · NPR ${npr(MODES[k])} (${crit(MODES[k])})</div>`).join('')}</td><td>${oTag(v.orig)}</td></tr>`).join('')}</tbody>`;
+ const lim=(v,i)=>`${v.dir==='up'?(i===0?'< ':'≥ '):(i===0?'> ':'≤ ')}${fv(v,v.th[Math.max(0,i-1)])}`;
+ $('#thtab').innerHTML=`<thead><tr><th>Variable</th><th>Normal</th><th>Precaución</th><th>Alerta (P)</th><th>Paro (antes de F)</th><th>Fuente de cada límite</th></tr></thead><tbody>${VARS.map(v=>{const t=v.th,u=v.unit,s=v.dir==='up'?['<','≥','≥','≥']:['>','≤','≤','≤'];
+  return `<tr><td><b>${esc(v.short)}</b> <span class="small">${esc(u)}</span></td><td class="n">${s[0]} ${fv(v,t[0])}</td><td class="n">${fv(v,t[0])} – ${fv(v,t[1])}</td><td class="n">${fv(v,t[1])} – ${fv(v,t[2])}</td><td class="n">${s[3]} ${fv(v,t[2])}</td><td><div>1. ${esc(v.src[0])}</div><div>2. ${esc(v.src[1])}</div><div>3. ${esc(v.src[2])}</div></td></tr>`}).join('')}</tbody>`;
+ $('#wtab').innerHTML=`<thead><tr><th>Variable</th><th>Modo principal</th><th>S × O × D</th><th>NPR</th><th>Peso</th><th>Justificación</th></tr></thead><tbody>${VARS.map(v=>{const k=v.modes[0],m=MODES[k];return `<tr><td>${esc(v.short)}</td><td>${k}</td><td class="n">${m.S} × ${m.O} × ${m.D}</td><td class="n">${npr(m)}</td><td class="n">${fmt(v.w*100,1)} %</td><td class="small">${esc(k==='M6'?'Modo de mayor NPR del AMFEC y eje de la curva P-F del grupo':v.id==='ais'?'M10 y M1 tienen S = 9 (riesgo para las personas)':v.id==='dtm'?'Mayor criticidad S×O del AMFEC (35); deriva en M1':v.id==='rpm'?'M3 progresa a la rotura de correa (M2)':'Sobrecarga del operario; también detecta M4 y fricción de M6')}</td></tr>`}).join('')}<tr><td><b>Total</b></td><td></td><td></td><td class="n">${NP}</td><td class="n">100 %</td><td class="small">${oTag('Inferido')} del AMFEC</td></tr></tbody>`;
+ $('#mv').innerHTML=VARS.map(v=>`<option value="${v.id}">${esc(v.short)} (${esc(v.unit)})</option>`).join('');
+ const SUP=[['Datos de condición del simulador','Lavallena no tiene historial de fallas ni sensores en el motor; se generan series con ruido gaussiano y una degradación por escenario que cruza P a la distancia del intervalo P-F antes de F.'],
+ ['Intervalos P-F de ΔT motor (30 d), aislamiento (60 d), corriente (21 d) y velocidad (45 d)','Estimación del equipo con el método de "percheros" del Tema 11; vibración (90 d) y temperatura del rodamiento (14 d) vienen del informe P-F del grupo.'],
+ ['Frecuencias de medición ≤ ½ P-F','Regla del Tema 11. Cambia respecto al AMFEC: termografía de trimestral a quincenal y megado de semestral a mensual, porque el AMFEC no cumplía ½ P-F con los intervalos supuestos.'],
+ ['Corriente expresada en % de la nominal','La potencia y la corriente de placa del motor no aparecen en las fichas públicas (supuesto ya declarado en el AMFEC).'],
+ ['Aislamiento clase F con elevación clase B','Configuración típica de motores de lavadoras industriales; el límite de carcasa se toma ~10 K por debajo del devanado.'],
+ ['Tiempo para intervenir (repuesto + programación)','Rodamientos 10 d (stock del distribuidor en Lima), eléctricos 2–3 d, correa 3 d. Supuesto del equipo.'],
+ ['Tareas RCM','Tomadas de las acciones recomendadas del AMFEC y del informe P-F; la hoja de decisión RCM no fue entregada para este tablero.'],
+ ['Indicadores mensuales','Simulados con 62 h programadas al mes (2–3 ciclos diarios), dos fallas en el año y presupuesto de S/ 450 al mes tomado de la hoja LCC.'],
+ ['Límites de temperatura del rodamiento','Valores típicos de catálogo para grasa estándar; deben verificarse en el catálogo del fabricante del rodamiento instalado.']];
+ $('#suptab').innerHTML=`<thead><tr><th>Supuesto</th><th>Justificación</th><th>Etiqueta</th></tr></thead><tbody>${SUP.map(s=>`<tr><td><b>${esc(s[0])}</b></td><td>${esc(s[1])}</td><td>${oTag('Supuesto')}</td></tr>`).join('')}</tbody>`;
+ $('#lim').innerHTML=['Ningún dato del simulador es medido; la demostración prueba la lógica, no el estado real del motor.','La app de vibración del celular no está calibrada: sirve para tendencia, no para comparar en valor absoluto con ISO 10816.','La proyección extrapola la tendencia actual; un cambio de carga, una lubricación o una reparación la invalida.','Los umbrales vienen de normas generales (ISO, IEEE, IEC, NEMA) y de criterio del grupo, no del fabricante del motor, que no los publica.','El índice de salud depende de los pesos por NPR, que a su vez dependen de S, O y D asignados por el equipo sin historial real.'].map(t=>`<li>${esc(t)}</li>`).join('');
+ const n=VARS.reduce((a,v)=>a+S.own[v.id].length,0);$('#owninfo').textContent=n?`Datos propios cargados: ${n} registros. Fuente activa: ${S.src==='own'?'datos cargados':'simulador'}.`:'Aún no hay datos propios.';
+}
+
+/* ---------- Carga de archivos ---------- */
+const norm=s=>String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+function parseCSV(txt){const lines=txt.replace(/\r/g,'').split('\n').filter(l=>l.trim());if(!lines.length)return[];const sep=lines[0].includes(';')?';':lines[0].includes('\t')?'\t':',';const hd=lines[0].split(sep).map(norm);return lines.slice(1).map(l=>{const c=l.split(sep);const o={};hd.forEach((h,i)=>o[h]=(c[i]??'').trim());return o})}
+function rowsFromFile(file,cb){const r=new FileReader();if(/\.xlsx?$/i.test(file.name)){if(typeof XLSX==='undefined'){cb(null,'No se pudo cargar el lector de Excel; guarde el archivo como CSV.');return}
+ r.onload=()=>{try{const wb=XLSX.read(new Uint8Array(r.result),{type:'array'});const js=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});cb(js.map(o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[norm(k),String(v)]))))}catch(e){cb(null,'No se pudo leer el archivo: '+e.message)}};r.readAsArrayBuffer(file)}
+ else{r.onload=()=>cb(parseCSV(String(r.result)));r.readAsText(file)}}
+const num=s=>parseFloat(String(s).replace(/\s/g,'').replace(',','.'));
+function findVar(s){const n=norm(s);return VARS.find(v=>v.id===n||norm(v.short)===n||norm(v.name).startsWith(n))}
+function loadCond(rows){let ok=0,bad=0;for(const r of rows){const v=findVar(r.variable??'');const d=num(r.dia??r.day??'');const x=num(r.valor??r.value??'');if(!v||!Number.isFinite(d)||!Number.isFinite(x)){bad++;continue}
+ const o=r.origen?(/^med/i.test(r.origen)?'Medido':/^inf/i.test(r.origen)?'Inferido':'Supuesto'):'Supuesto (sin etiqueta)';S.own[v.id].push({d:Math.round(d),x,o});ok++}
+ VARS.forEach(v=>S.own[v.id].sort((a,b)=>a.d-b.d));return{ok,bad}}
+function afterLoad(res){$('#fmsg').textContent=`Cargados ${res.ok} registros${res.bad?`, ${res.bad} filas ignoradas (variable, día o valor no válidos)`:''}. Fuente activa: datos cargados.`;if(res.ok){S.src='own';$('#src').value='own';S.day=horizon()}all()}
+const TPL='dia,variable,valor,origen\n0,vib,0.52,Medido\n0,trod,46.5,Medido\n0,dtm,27,Inferido\n0,ais,650,Medido\n0,corr,77,Medido\n0,rpm,701,Medido\n30,vib,0.61,Medido\n30,ais,610,Medido';
+
+/* ---------- Orquestación ---------- */
+const TABS=['estado','tendencias','alertas','indicadores','datos'];
+function route(){const h=location.hash.slice(1);const t=TABS.includes(h)?h:'estado';TABS.forEach(x=>{$('#t-'+x).classList.toggle('on',x===t)});document.querySelectorAll('#tabs a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#'+t));setTimeout(()=>{[trC,hiC,...kC].forEach(c=>c&&c.resize())},0)}
+function all(){regen();renderHead();renderEstado();renderHiChart();renderTrend();renderAlertas();renderDatos()}
+function light(){renderHead();renderEstado();renderHiChart();renderTrend();renderAlertas()}
+$('#scen').innerHTML=Object.entries(SCEN).map(([k,s])=>`<option value="${k}">${esc(s.name)}</option>`).join('');$('#scen').value=S.scen;
+$('#src').onchange=e=>{S.src=e.target.value;S.day=S.src==='own'?horizon():S.day;all()};
+$('#scen').onchange=e=>{S.scen=e.target.value;S.src='sim';$('#src').value='sim';all()};
+$('#samp').onchange=e=>{S.samp=e.target.value;all()};
+$('#seed').onclick=()=>{S.seed=Math.floor(Math.random()*1e6);all()};
+$('#day').oninput=e=>{S.day=+e.target.value;light()};
+let timer=null;
+$('#play').onclick=()=>{if(timer){clearInterval(timer);timer=null;$('#play').textContent='▶ Reproducir';return}
+ if(S.day>=+$('#day').max)S.day=0;$('#play').textContent='❚❚ Pausar';timer=setInterval(()=>{S.day=Math.min(+$('#day').max,S.day+3);$('#day').value=S.day;light();if(S.day>=+$('#day').max){clearInterval(timer);timer=null;$('#play').textContent='▶ Reproducir'}},120)};
+document.addEventListener('click',e=>{const tv=e.target.closest('[data-tv]');if(tv){S.tv=tv.dataset.tv;renderTrend()}
+ const cd=e.target.closest('.card[data-v]');if(cd){S.tv=cd.dataset.v;location.hash='tendencias';renderTrend()}
+ const cp=e.target.closest('[data-copy]');if(cp){const t=otText(orders()[+cp.dataset.copy]);try{navigator.clipboard.writeText(t).then(()=>cp.textContent='Copiada',()=>{cp.textContent='Seleccione y copie abajo';cp.insertAdjacentHTML('afterend',`<textarea>${esc(t)}</textarea>`)})}catch(_){}}});
+document.addEventListener('keydown',e=>{const cd=e.target.closest&&e.target.closest('.card[data-v]');if(cd&&(e.key==='Enter'||e.key===' ')){e.preventDefault();cd.click()}});
+$('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;rowsFromFile(f,(rows,err)=>{if(err){$('#fmsg').textContent=err;return}afterLoad(loadCond(rows))})};
+$('#pload').onclick=()=>afterLoad(loadCond(parseCSV($('#paste').value)));
+$('#tpl').onclick=()=>{$('#paste').value=TPL;try{navigator.clipboard.writeText(TPL).then(()=>$('#fmsg').textContent='Plantilla copiada y pegada en el cuadro.',()=>$('#fmsg').textContent='Plantilla pegada en el cuadro.')}catch(_){$('#fmsg').textContent='Plantilla pegada en el cuadro.'}};
+$('#clear').onclick=()=>{VARS.forEach(v=>S.own[v.id]=[]);S.src='sim';$('#src').value='sim';$('#fmsg').textContent='Datos propios borrados.';all()};
+$('#mform').onsubmit=e=>{e.preventDefault();const v=V[$('#mv').value],d=Math.round(+$('#md').value),x=num($('#mx').value);if(!Number.isFinite(x))return;S.own[v.id].push({d,x,o:$('#mo').value});S.own[v.id].sort((a,b)=>a.d-b.d);S.src='own';$('#src').value='own';S.day=horizon();$('#fmsg').textContent='';$('#mx').value='';all()};
+$('#kfile').onchange=e=>{const f=e.target.files[0];if(!f)return;rowsFromFile(f,(rows,err)=>{if(err){$('#kmsg').textContent=err;return}
+ const K=rows.map(r=>({mes:r.mes||'',hp:num(r.horas_programadas),hpar:num(r.horas_paro)||0,f:num(r.fallas)||0,hr:num(r.horas_reparacion)||0,c:num(r.costo_mant)||0,o:r.origen?(/^med/i.test(r.origen)?'Medido':/^inf/i.test(r.origen)?'Inferido':'Supuesto'):'Supuesto (sin etiqueta)'})).filter(r=>Number.isFinite(r.hp));
+ if(!K.length){$('#kmsg').textContent='No se encontraron filas válidas.';return}S.kpi=K;S.kpiOrig=K[0].o;$('#kmsg').textContent=`Cargados ${K.length} meses.`;renderKPI()})};
+$('#kreset').onclick=()=>{S.kpi=null;S.kpiOrig='Supuesto · simulado';$('#kmsg').textContent='';renderKPI()};
+window.addEventListener('hashchange',route);
+S.day=272;all();renderKPI();route();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{light();renderKPI()});
+new MutationObserver(()=>{light();renderKPI()}).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+}
+</script>
+</body>
+</html>
